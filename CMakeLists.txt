@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(StringReverse C CXX)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Disable installation for fetched sub-modules
 set(gRPC_INSTALL OFF CACHE BOOL "" FORCE)
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -35,13 +37,13 @@ else()
 endif()
 
 # Proto file setup
-get_filename_component(hw_proto "./protos/stringreverse.proto" ABSOLUTE)
+get_filename_component(hw_proto "./protos/coordinator.proto" ABSOLUTE)
 get_filename_component(hw_proto_path "${hw_proto}" PATH)
 
-set(hw_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/stringreverse.pb.cc")
-set(hw_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/stringreverse.pb.h")
-set(hw_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/stringreverse.grpc.pb.cc")
-set(hw_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/stringreverse.grpc.pb.h")
+set(hw_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/coordinator.pb.cc")
+set(hw_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/coordinator.pb.h")
+set(hw_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/coordinator.grpc.pb.cc")
+set(hw_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/coordinator.grpc.pb.h")
 
 add_custom_command(
       OUTPUT "${hw_proto_srcs}" "${hw_proto_hdrs}" "${hw_grpc_srcs}" "${hw_grpc_hdrs}"
@@ -66,7 +68,7 @@ target_link_libraries(hw_grpc_proto
   ${_PROTOBUF_LIBPROTOBUF})
 
 # Executables
-foreach(_target client server)
+foreach(_target coordinator worker)
   add_executable(${_target} "./src/${_target}.cc")
   target_link_libraries(${_target}
     hw_grpc_proto
