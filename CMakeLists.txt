@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(StringReverse C CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_CXX_STANDARD 17)
 
 # Disable installation for fetched sub-modules
 set(gRPC_INSTALL OFF CACHE BOOL "" FORCE)
@@ -67,10 +68,21 @@ target_link_libraries(hw_grpc_proto
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF})
 
+# Create separate library for tasks to keep build organized
+add_library(tasks_lib
+  src/tasks/map_task.cc
+  src/tasks/map_task.h
+  src/task_factory.h
+  src/task_interface.h
+)
+
+target_include_directories(tasks_lib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(tasks_lib PUBLIC hw_grpc_proto)
 # Executables
 foreach(_target coordinator worker)
   add_executable(${_target} "./src/${_target}.cc")
   target_link_libraries(${_target}
+    tasks_lib
     hw_grpc_proto
     absl::check
     absl::flags
