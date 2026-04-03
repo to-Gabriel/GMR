@@ -3,6 +3,8 @@
 #include <optional>
 
 #include "coordinator.grpc.pb.h"
+#include "task_factory.h"
+#include "tasks/map_task.h"
 
 using grpc::Channel;
 using grpc::ClientContext;
@@ -57,6 +59,14 @@ void RunClient() {
               << "\tInput File: " << response->file_in() << std::endl;
   } else {
     std::cout << "Failed to retrieve task" << std::endl;
+  }
+
+  auto task = TaskFactory(response->type());
+
+  if (task) {
+    task->execute(response->file_in());
+  } else {
+    std::cout << "Failed to execute task" << std::endl;
   }
 }
 
