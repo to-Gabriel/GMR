@@ -2,17 +2,17 @@
 
 #include <optional>
 
-#include "coordinator.grpc.pb.h"
-#include "task_factory.h"
-#include "tasks/map_task.h"
+#include "../tasks/map_task.h"
+#include "../tasks/task_factory.h"
+#include "mapreduce.grpc.pb.h"
 
 using grpc::Channel;
 using grpc::ClientContext;
 using grpc::Status;
 
-using coordinator::Coordinator;
-using coordinator::Worker;
-using coordinator::WorkerTask;
+using mapreduce::Coordinator;
+using mapreduce::Worker;
+using mapreduce::WorkerTask;
 
 class WorkerClient {
 public:

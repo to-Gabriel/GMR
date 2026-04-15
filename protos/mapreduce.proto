@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package mapreduce;
+
+service Coordinator {
+  rpc requestTask(Worker) returns (WorkerTask) {}
+}
+
+service WorkerService {
+  rpc healthCheck(Empty) returns (HealthStatus) {}
+}
+
+message Worker {
+  string id = 1;
+}
+
+message WorkerTask {
+  int32 type = 1;
+  string file_in = 2;
+}
+
+message HealthStatus {
+  int32 status = 1;
+}
+
+// Protobuf needs a input, defining Empty message
+message Empty{}

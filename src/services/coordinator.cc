@@ -2,16 +2,16 @@
 
 #include <string>
 
-#include "coordinator.grpc.pb.h"
+#include "mapreduce.grpc.pb.h"
 
 using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerContext;
 using grpc::Status;
 
-using coordinator::Coordinator;
-using coordinator::Worker;
-using coordinator::WorkerTask;
+using mapreduce::Coordinator;
+using mapreduce::Worker;
+using mapreduce::WorkerTask;
 
 class CoordinatorServiceImplementation final : public Coordinator::Service {
   Status requestTask(ServerContext *context, const Worker *worker,

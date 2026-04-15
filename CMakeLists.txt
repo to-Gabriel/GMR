@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(StringReverse C CXX)
+project(GabrielMapReduce C CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
@@ -11,15 +11,18 @@ set(protobuf_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 option(USE_SYSTEM_GRPC "Use system installed gRPC" OFF)
 
 if(USE_SYSTEM_GRPC)
-  find_package(gRPC CONFIG REQUIRED)
   find_package(Protobuf REQUIRED)
-  # Define the variables
+  find_package(gRPC CONFIG REQUIRED)
+   # Define the variables
   set(_PROTOBUF_PROTOC $<TARGET_FILE:protobuf::protoc>)
   set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
   set(_GRPC_GRPCPP gRPC::grpc++)
   set(_REFLECTION gRPC::grpc++_reflection)
   set(_PROTOBUF_LIBPROTOBUF protobuf::libprotobuf)
 else()
+  set(gRPC_INSTALL OFF CACHE BOOL "" FORCE)
+  set(protobuf_INSTALL OFF CACHE BOOL "" FORCE)
+  set(ABSL_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
   include(FetchContent)
   FetchContent_Declare(
         gRPC
@@ -38,55 +41,80 @@ else()
 endif()
 
 # Proto file setup
-get_filename_component(hw_proto "./protos/coordinator.proto" ABSOLUTE)
-get_filename_component(hw_proto_path "${hw_proto}" PATH)
+get_filename_component(mr_proto "./protos/mapreduce.proto" ABSOLUTE)
+get_filename_component(mr_proto_path "${mr_proto}" PATH)
 
-set(hw_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/coordinator.pb.cc")
-set(hw_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/coordinator.pb.h")
-set(hw_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/coordinator.grpc.pb.cc")
-set(hw_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/coordinator.grpc.pb.h")
+set(mr_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/mapreduce.pb.cc")
+set(mr_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/mapreduce.pb.h")
+set(mr_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/mapreduce.grpc.pb.cc")
+set(mr_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/mapreduce.grpc.pb.h")
 
 add_custom_command(
-      OUTPUT "${hw_proto_srcs}" "${hw_proto_hdrs}" "${hw_grpc_srcs}" "${hw_grpc_hdrs}"
+      OUTPUT "${mr_proto_srcs}" "${mr_proto_hdrs}" "${mr_grpc_srcs}" "${mr_grpc_hdrs}"
       COMMAND ${_PROTOBUF_PROTOC}
       ARGS --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
         --cpp_out "${CMAKE_CURRENT_BINARY_DIR}"
-        -I "${hw_proto_path}"
+        -I "${mr_proto_path}"
         --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
-        "${hw_proto}"
-      DEPENDS "${hw_proto}")
+        "${mr_proto}"
+      DEPENDS "${mr_proto}")
 
-include_directories("${CMAKE_CURRENT_BINARY_DIR}")
+  include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
-# Library
-add_library(hw_grpc_proto
-  ${hw_grpc_srcs} ${hw_grpc_hdrs}
-  ${hw_proto_srcs} ${hw_proto_hdrs})
 
-target_link_libraries(hw_grpc_proto
+    # gRPC C++ proto library
+add_library(mr_grpc_proto
+  ${mr_grpc_srcs} ${mr_grpc_hdrs}
+  ${mr_proto_srcs} ${mr_proto_hdrs})
+
+target_link_libraries(mr_grpc_proto
+  PUBLIC
   ${_REFLECTION}
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF})
 
-# Create separate library for tasks to keep build organized
+target_include_directories(mr_grpc_proto PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
+
+# Library for tasks to keep build organized
 add_library(tasks_lib
   src/tasks/map_task.cc
   src/tasks/map_task.h
-  src/task_factory.h
-  src/task_interface.h
+  src/tasks/task_factory.h
+  src/tasks/task_interface.h
 )
-
+target_link_libraries(tasks_lib PUBLIC mr_grpc_proto)
 target_include_directories(tasks_lib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(tasks_lib PUBLIC hw_grpc_proto)
+
+# Core GMR library for clients
+add_library(gabriel_map_reduce
+  src/gabriel_map_reduce.h
+  src/gabriel_map_reduce.cc
+)
+target_link_libraries(gabriel_map_reduce PUBLIC
+  tasks_lib
+  mr_grpc_proto)
+
+target_compile_options(gabriel_map_reduce PUBLIC -include cstdint)
+
+# Export inlcude paths so client_programs can find gabriel_map_reduce.h
+target_include_directories(gabriel_map_reduce PUBLIC
+  "${CMAKE_CURRENT_SOURCE_DIR}/client_programs")
+
 # Executables
 foreach(_target coordinator worker)
-  add_executable(${_target} "./src/${_target}.cc")
+  add_executable(${_target} "./src/services/${_target}.cc")
   target_link_libraries(${_target}
-    tasks_lib
-    hw_grpc_proto
+    gabriel_map_reduce
     absl::check
     absl::flags
     absl::flags_parse
     absl::log
     absl::log_initialize)
+endforeach()
+
+# Create Executables for client client_programs
+foreach(_target letter_count)
+  add_executable(${_target} "./client_programs/${_target}.cc")
+  target_link_libraries(${_target}
+  gabriel_map_reduce)
 endforeach()
