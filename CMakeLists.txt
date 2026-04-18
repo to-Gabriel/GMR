@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(StringReverse C CXX)
+project(GabrielMapReduce C CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
@@ -11,8 +11,8 @@ set(protobuf_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 option(USE_SYSTEM_GRPC "Use system installed gRPC" OFF)
 
 if(USE_SYSTEM_GRPC)
-  find_package(gRPC CONFIG REQUIRED)
   find_package(Protobuf REQUIRED)
+  find_package(gRPC CONFIG REQUIRED)
   # Define the variables
   set(_PROTOBUF_PROTOC $<TARGET_FILE:protobuf::protoc>)
   set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
@@ -21,11 +21,22 @@ if(USE_SYSTEM_GRPC)
   set(_PROTOBUF_LIBPROTOBUF protobuf::libprotobuf)
 else()
   include(FetchContent)
+
+  # Fix for uintptr_t header issue
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-include> $<$<COMPILE_LANGUAGE:CXX>:cstdint>)
+  endif()
+
   FetchContent_Declare(
         gRPC
         GIT_REPOSITORY https://github.com/grpc/grpc
         GIT_TAG v1.60.0 # Standard stable version
     )
+
+  set(gRPC_INSTALL OFF CACHE BOOL "" FORCE)
+  set(protobuf_INSTALL OFF CACHE BOOL "" FORCE)
+  set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)
+
   set(FETCHCONTENT_QUIET OFF)
   FetchContent_MakeAvailable(gRPC)
 
@@ -82,8 +93,8 @@ target_link_libraries(tasks_lib PUBLIC hw_grpc_proto)
 foreach(_target coordinator worker)
   add_executable(${_target} "./src/${_target}.cc")
   target_link_libraries(${_target}
-    tasks_lib
     hw_grpc_proto
+    tasks_lib
     absl::check
     absl::flags
     absl::flags_parse
