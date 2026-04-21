@@ -49,13 +49,13 @@ else()
 endif()
 
 # Proto file setup
-get_filename_component(hw_proto "./protos/coordinator.proto" ABSOLUTE)
+get_filename_component(hw_proto "./protos/mapreduce.proto" ABSOLUTE)
 get_filename_component(hw_proto_path "${hw_proto}" PATH)
 
-set(hw_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/coordinator.pb.cc")
-set(hw_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/coordinator.pb.h")
-set(hw_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/coordinator.grpc.pb.cc")
-set(hw_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/coordinator.grpc.pb.h")
+set(hw_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/mapreduce.pb.cc")
+set(hw_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/mapreduce.pb.h")
+set(hw_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/mapreduce.grpc.pb.cc")
+set(hw_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/mapreduce.grpc.pb.h")
 
 add_custom_command(
       OUTPUT "${hw_proto_srcs}" "${hw_proto_hdrs}" "${hw_grpc_srcs}" "${hw_grpc_hdrs}"
@@ -79,22 +79,11 @@ target_link_libraries(hw_grpc_proto
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF})
 
-# Create separate library for tasks to keep build organized
-add_library(tasks_lib
-  src/tasks/map_task.cc
-  src/tasks/map_task.h
-  src/task_factory.h
-  src/task_interface.h
-)
-
-target_include_directories(tasks_lib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(tasks_lib PUBLIC hw_grpc_proto)
 # Executables
 foreach(_target coordinator worker)
   add_executable(${_target} "./src/${_target}.cc")
   target_link_libraries(${_target}
     hw_grpc_proto
-    tasks_lib
     absl::check
     absl::flags
     absl::flags_parse

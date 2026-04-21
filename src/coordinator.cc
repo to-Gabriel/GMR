@@ -1,28 +1,32 @@
 #include <grpcpp/grpcpp.h>
 
+#include <memory>
+#include <stdio.h>
 #include <string>
 
-#include "coordinator.grpc.pb.h"
+#include "mapreduce.grpc.pb.h"
 
 using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerContext;
 using grpc::Status;
 
-using coordinator::Coordinator;
-using coordinator::Worker;
-using coordinator::WorkerTask;
+using mapreduce::Coordinator;
+using mapreduce::GetTaskArgs;
+using mapreduce::GetTaskReply;
 
 class CoordinatorServiceImplementation final : public Coordinator::Service {
-  Status requestTask(ServerContext *context, const Worker *worker,
-                     WorkerTask *reply) override {
-    std::cout << "Assigning X task to Worker " << worker->id() << std::endl;
+  Status getTask(ServerContext *context, const GetTaskArgs *args,
+                 GetTaskReply *reply) override {
+    std::cout << "Assigning X task to Worker " << args->worker_id()
+              << std::endl;
 
     std::string input_file_name =
         "input.txt"; // Only one file for basic implementation
 
-    reply->set_type(1);
-    reply->set_file_in(input_file_name);
+    reply->set_task_type(mapreduce::TASK_MAP);
+    reply->set_task_id(1);
+    reply->set_n_reduce(3);
     return Status::OK;
   }
 };
@@ -45,7 +49,24 @@ void RunServer() {
   server->Wait();
 }
 
+std::unique_ptr<Server> MakeCoordinator(std::vector<std::string> input_files,
+                                        int nReduce) {}
+
 int main(int argc, char **argv) {
+  if (argc < 2) {
+    printf("Usage: coordinator inputfiles...\n");
+    return 1;
+  }
+
+  std::vector<std::string> files{};
+  for (int i = 0; i < argc; i++) {
+    std::string file_name(argv[i]);
+    files.push_back(file_name);
+  }
+
+  int nReduce = 3;
+
+  std::unique_ptr<Server> coor_server = MakeCoordinator(files, nReduce);
   RunServer();
   return 0;
 }
