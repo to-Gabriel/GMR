@@ -2,6 +2,11 @@ syntax = "proto3";
 
 package mapreduce;
 
+message KeyValue {
+  string key = 1;
+  string value = 2;
+}
+
 enum JobState {
   STATE_WAITING = 0;
   STATE_MAP = 1;

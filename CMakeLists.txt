@@ -74,6 +74,9 @@ add_library(hw_grpc_proto
   ${hw_grpc_srcs} ${hw_grpc_hdrs}
   ${hw_proto_srcs} ${hw_proto_hdrs})
 
+# Compile with -fPIC flag to allow client programs plugin to be Position Independent
+set_target_properties(hw_grpc_proto PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 target_link_libraries(hw_grpc_proto
   ${_REFLECTION}
   ${_GRPC_GRPCPP}
@@ -88,5 +91,12 @@ foreach(_target coordinator worker)
     absl::flags
     absl::flags_parse
     absl::log
-    absl::log_initialize)
+    absl::log_initialize
+    ${CMAKE_DL_LIBS})
 endforeach()
+
+add_library(wc SHARED "./client_programs/word_count.cc")
+target_link_libraries(wc 
+  hw_grpc_proto 
+  ${_GRPC_GRPCPP}
+)

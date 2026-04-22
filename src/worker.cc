@@ -1,3 +1,5 @@
+#include <dlfcn.h>
+#include <functional>
 #include <grpcpp/grpcpp.h>
 
 #include <optional>
@@ -11,6 +13,11 @@ using grpc::Status;
 using mapreduce::Coordinator;
 using mapreduce::GetTaskArgs;
 using mapreduce::GetTaskReply;
+using mapreduce::KeyValue;
+
+// Funciton pointers for expectations on Map/Reduce functions
+typedef std::vector<KeyValue> (*MapFunc)(std::string, std::string);
+typedef std::string (*ReduceFunc)(std::string, std::vector<std::string>);
 
 class WorkerClient {
 public:
@@ -59,8 +66,40 @@ void RunClient() {
   }
 }
 
+std::tuple<std::function<std::vector<KeyValue>(std::string, std::string)>,
+           std::function<std::string(std::string, std::vector<std::string>)>>
+loadPlugin(std::string filename) {
+  // Open shared library
+  void *handle = dlopen(filename.c_str(), RTLD_LAZY);
+  if (!handle) {
+    fprintf(stderr, "Error: %s\n", dlerror());
+    exit(1);
+  }
+
+  MapFunc map_ptr = (MapFunc)dlsym(handle, "Map");
+  if (!map_ptr) {
+    fprintf(stderr, "Error %s\n", dlerror());
+    exit(1);
+  }
+
+  ReduceFunc reduce_ptr = (ReduceFunc)dlsym(handle, "Reduce");
+  if (!reduce_ptr) {
+    fprintf(stderr, "Error: %s\n", dlerror());
+    exit(1);
+  }
+  return {
+      std::function<std::vector<KeyValue>(std::string, std::string)>(map_ptr),
+      std::function<std::string(std::string, std::vector<std::string>)>(
+          reduce_ptr)};
+}
+
 int main(int argc, char *argv[]) {
-  RunClient();
+  if (argc != 2) {
+    std::cout << "Usage: worker xxx.so" << std::endl;
+    return 1;
+  }
+
+  auto [mapf, reducef] = loadPlugin(argv[1]);
 
   return 0;
 }
