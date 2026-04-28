@@ -1,10 +1,18 @@
 #include <dlfcn.h>
+#include <exception>
 #include <functional>
 #include <grpcpp/grpcpp.h>
 
+#include <fstream>
+#include <iostream>
+#include <memory>
 #include <optional>
+#include <system_error>
 
+#include "grpcpp/create_channel.h"
+#include "grpcpp/security/credentials.h"
 #include "mapreduce.grpc.pb.h"
+#include "mapreduce.pb.h"
 
 using grpc::Channel;
 using grpc::ClientContext;
@@ -43,6 +51,108 @@ public:
 private:
   std::unique_ptr<Coordinator::Stub> stub_;
 };
+
+class Client {
+public:
+  // The id number for the client, incremented at call site
+  static int id_;
+
+  Client(std::string target_address, MapFunc mapf, ReduceFunc reducef)
+      : mapf_(mapf), reducef_(reducef) {
+    this->channel_ = std::make_unique<WorkerClient>(grpc::CreateChannel(
+        target_address, grpc::InsecureChannelCredentials()));
+  }
+
+  bool Work() {
+    std::optional<GetTaskReply> reply;
+    GetTaskArgs args;
+    args.set_worker_id(std::to_string(id_));
+
+    reply = this->channel_->getTask(args);
+
+    if (!reply.has_value()) {
+      // RPC failure
+      throw std::system_error(
+          std::make_error_code(std::errc::connection_aborted),
+          "Failed to retrieve reply from GetTask rpc call");
+    }
+
+    std::cout << "Starting " << reply->task_type()
+              << " task with ID: " << reply->task_id()
+              << "\nFor input file(s): " << std::endl;
+    for (const auto &file : reply->files_to_process()) {
+      std::cout << file << std::endl;
+    }
+
+    switch (reply->task_type()) {
+    case mapreduce::TASK_MAP: {
+      std::vector<std::string> intermediate_files = this->Map(&reply.value());
+      break;
+    }
+    case mapreduce::TASK_REDUCE: {
+      // TODO: Implement Reduce handler
+      // std::string output = this->Reduce(&reply.value());
+      break;
+    }
+    case mapreduce::TASK_WAIT: {
+      sleep(5);
+      break;
+    }
+    case mapreduce::TASK_EXIT: {
+      return true;
+      break;
+    }
+    }
+    return false;
+  }
+
+  std::vector<std::string> Map(GetTaskReply *reply) {
+    // Assuming one input file per map task
+    std::string filePath = reply->files_to_process(0);
+    std::ifstream file(filePath);
+
+    if (!file.is_open()) {
+      throw std::system_error(
+          std::make_error_code(std::errc::connection_aborted),
+          "Failed to open file: " + filePath);
+    }
+
+    std::string content((std::istreambuf_iterator<char>(file)),
+                        (std::istreambuf_iterator<char>()));
+
+    std::vector<KeyValue> kva = this->mapf_(filePath, content);
+
+    // TODO:
+    // Create temp files and writes to given files
+    // intermediate files will total to M x N
+    // where M is the amount of Map tasks and
+    // N is the amount of reduce tasks (nReduce)
+  }
+
+private:
+  std::unique_ptr<WorkerClient> channel_;
+  MapFunc mapf_;
+  ReduceFunc reducef_;
+};
+
+void Worker(MapFunc mapf, ReduceFunc reducef) {
+  std::string target_address("0.0.0.0:50051");
+  Client client(target_address, mapf, reducef);
+  Client::id_++;
+  while (true) {
+    try {
+      bool done = client.Work();
+      if (done) {
+        std::cout << "Coordinator dispatched complete state" << std::endl;
+        return;
+      }
+
+    } catch (std::exception e) {
+      std::cout << "Error: " << e.what() << std::endl;
+      return;
+    }
+  }
+}
 
 void RunClient() {
   std::string target_address("0.0.0.0:50051");
@@ -100,6 +210,8 @@ int main(int argc, char *argv[]) {
   }
 
   auto [mapf, reducef] = loadPlugin(argv[1]);
+
+  Worker(mapf, reducef);
 
   return 0;
 }
