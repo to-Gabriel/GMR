@@ -3,16 +3,22 @@
 #include <functional>
 #include <grpcpp/grpcpp.h>
 
+#include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <stdio.h>
+#include <string>
 #include <system_error>
 
 #include "grpcpp/create_channel.h"
 #include "grpcpp/security/credentials.h"
 #include "mapreduce.grpc.pb.h"
 #include "mapreduce.pb.h"
+
+namespace fs = std::filesystem;
 
 using grpc::Channel;
 using grpc::ClientContext;
@@ -122,11 +128,34 @@ public:
 
     std::vector<KeyValue> kva = this->mapf_(filePath, content);
 
-    // TODO:
     // Create temp files and writes to given files
     // intermediate files will total to M x N
     // where M is the amount of Map tasks and
     // N is the amount of reduce tasks (nReduce)
+    std::vector<std::unique_ptr<std::ofstream>> buckets;
+    buckets.reserve(reply->n_reduce());
+    std::vector<std::string> intermediate_files(reply->n_reduce());
+
+    std::map<std::string, std::string> file_name_map;
+
+    for (int i = 0; i < reply->n_reduce(); ++i) {
+      std::string file_name =
+          "mr-" + std::to_string(reply->task_id()) + "-" + std::to_string(i);
+      std::string temp_file_name =
+          "temp-" + std::to_string(reply->task_id()) + "-" + std::to_string(i);
+
+      fs::path temp_path = fs::current_path() / temp_file_name;
+
+      auto file_ptr = std::make_unique<std::ofstream>(
+          temp_path, std::ios::out | std::ios::trunc);
+
+      if (!file_ptr->is_open()) {
+        throw std::system_error(std::make_error_code(std::errc::io_error),
+                                "Error: Could not create temp file");
+      }
+      buckets.push_back(std::move(file_ptr));
+      file_name_map[temp_file_name] = file_name;
+    }
   }
 
 private:
