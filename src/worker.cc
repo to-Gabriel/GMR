@@ -8,6 +8,10 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+// TODO: Fix package not found
+// nlohmann needs to be added as a dependency in CMakeLists
+// Figure out how to load and make visible to this file
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <stdio.h>
 #include <string>
@@ -32,6 +36,21 @@ using mapreduce::KeyValue;
 // Funciton pointers for expectations on Map/Reduce functions
 typedef std::vector<KeyValue> (*MapFunc)(std::string, std::string);
 typedef std::string (*ReduceFunc)(std::string, std::vector<std::string>);
+
+// Hash function converted, shoutout Gemini on this one.
+int ihash(const std::string &key) {
+  uint32_t hash = 2166136261U; // FNV offset basis
+  const uint32_t fnv_prime = 16777619U;
+
+  for (unsigned char c : key) {
+    hash ^= c;
+    hash *= fnv_prime;
+  }
+
+  // Masking with 0x7fffffff ensures the result is a positive 31-bit integer
+  // matching the Go logic exactly.
+  return static_cast<int>(hash & 0x7fffffff);
+}
 
 class WorkerClient {
 public:
@@ -93,6 +112,10 @@ public:
     switch (reply->task_type()) {
     case mapreduce::TASK_MAP: {
       std::vector<std::string> intermediate_files = this->Map(&reply.value());
+
+      // TODO: Implement DoneTask rpc call and call here
+      // Coordinator needs to be notified of the completion of task
+      // Proto file needs to be updated for this functionality
       break;
     }
     case mapreduce::TASK_REDUCE: {
@@ -134,6 +157,8 @@ public:
     // N is the amount of reduce tasks (nReduce)
     std::vector<std::unique_ptr<std::ofstream>> buckets;
     buckets.reserve(reply->n_reduce());
+    std::vector<std::string> temp_file_names;
+
     std::vector<std::string> intermediate_files(reply->n_reduce());
 
     std::map<std::string, std::string> file_name_map;
@@ -154,8 +179,34 @@ public:
                                 "Error: Could not create temp file");
       }
       buckets.push_back(std::move(file_ptr));
+      temp_file_names.push_back(
+          temp_file_name); // Associated filename with the ofstream object for
+                           // later use
       file_name_map[temp_file_name] = file_name;
     }
+
+    for (const KeyValue &kv : kva) {
+      int hashed_key = ihash(kv.key()) % reply->n_reduce();
+
+      // Encode to JSON
+      nlohmann::json j;
+      j["Key"] = kv.key();
+      j["Value"] = kv.value();
+
+      *buckets[hashed_key] << j.dump() << "\n";
+    }
+
+    for (int i = 0; i < buckets.size(); i++) {
+      std::string temp_name = temp_file_names[i];
+      std::string final_name = file_name_map[temp_name];
+
+      buckets[i]->close();
+
+      fs::rename(temp_name, final_name);
+
+      intermediate_files[i] = final_name;
+    }
+    return intermediate_files;
   }
 
 private:
